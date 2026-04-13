@@ -432,7 +432,8 @@ async function main(): Promise<void> {
   if (SERVE_STATIC) {
     const dist = path.join(__dirname, '../dist')
     app.use(express.static(dist))
-    app.get('*', (req, res, next) => {
+    // Express 5 / path-to-regexp v8: bare '*' is invalid; use a named wildcard (matches `/` too).
+    app.get('/{*path}', (req, res, next) => {
       if (req.path.startsWith('/api')) return next()
       res.sendFile(path.join(dist, 'index.html'), (err) => {
         if (err) next(err)
