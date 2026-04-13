@@ -1,0 +1,33 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: chessrat
+      POSTGRES_PASSWORD: chessrat
+      POSTGRES_DB: chessrat
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U chessrat -d chessrat']
+      interval: 5s
+      timeout: 5s
+      retries: 8
+
+  app:
+    build: .
+    ports:
+      - '8080:3001'
+    environment:
+      DATABASE_URL: postgresql://chessrat:chessrat@postgres:5432/chessrat
+      JWT_SECRET: ${JWT_SECRET:-dev-docker-only-change-me-min-16-characters}
+      FRONTEND_ORIGIN: http://localhost:8080
+      API_PUBLIC_URL: http://localhost:8080
+      TRUST_HTTP_COOKIES: '1'
+      PORT: '3001'
+      SERVE_STATIC: '1'
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  postgres_data:
