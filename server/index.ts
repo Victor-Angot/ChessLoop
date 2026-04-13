@@ -28,7 +28,8 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const jwtSecret = process.env.JWT_SECRET
 if (!jwtSecret || jwtSecret.length < 16) {
   console.error(
-    'Set JWT_SECRET in .env (at least 16 characters). See env.example in the project root.',
+    'JWT_SECRET is missing or shorter than 16 characters. Set it in the process environment ' +
+      '(e.g. Render Dashboard → Environment). Locally, use a .env file — see env.example.',
   )
   process.exit(1)
 }
