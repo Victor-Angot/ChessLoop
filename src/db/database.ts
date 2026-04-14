@@ -40,10 +40,6 @@ export function hasTrainerDatabase(): boolean {
   return activeUserId !== null
 }
 
-export function getActiveTrainerUserId(): string | null {
-  return activeUserId
-}
-
 /**
  * Bind trainer storage to the signed-in account (server-side DB via API).
  * Clears when logged out.
@@ -76,11 +72,6 @@ export async function bulkUpsertRepertoires(
   await putTrainerRepertoires(repertoires)
 }
 
-export async function getAllRepertoires(): Promise<Repertoire[]> {
-  const { repertoires } = await loadSnapshot()
-  return repertoires
-}
-
 export async function getAllLines(): Promise<ChessLine[]> {
   const { lines } = await loadSnapshot()
   return lines
@@ -92,21 +83,7 @@ export async function getDueLines(now: Date): Promise<ChessLine[]> {
   return lines.filter((l) => l.srs.nextReview.getTime() <= now.getTime())
 }
 
-export async function getLinesByRepertoire(id: string): Promise<ChessLine[]> {
-  if (!hasTrainerDatabase()) return []
-  const { lines } = await loadSnapshot()
-  return lines.filter((l) => l.repertoireId === id)
-}
-
 export async function deleteRepertoire(id: string): Promise<void> {
   if (!hasTrainerDatabase()) return
   await deleteTrainerRepertoireRemote(id)
-}
-
-export async function deleteAll(): Promise<void> {
-  if (!hasTrainerDatabase()) return
-  const snap = await loadSnapshot()
-  for (const r of snap.repertoires) {
-    await deleteTrainerRepertoireRemote(r.id)
-  }
 }

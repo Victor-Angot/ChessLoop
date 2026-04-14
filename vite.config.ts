@@ -3,8 +3,29 @@ import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
 import { authApiDevPlugin } from './vite/authApiDevPlugin'
 
+function vendorChunk(id: string): string | undefined {
+  if (!id.includes('node_modules')) return
+  if (id.includes('node_modules/react-dom') || id.includes('node_modules/react/')) {
+    return 'react-vendor'
+  }
+  if (id.includes('scheduler')) return 'react-vendor'
+  if (id.includes('react-router')) return 'router'
+  if (id.includes('lucide-react')) return 'lucide'
+  if (id.includes('chess.js')) return 'chess'
+  if (id.includes('react-chessboard')) return 'chessboard'
+  if (id.includes('tsparticles')) return 'tsparticles'
+  return 'vendor'
+}
+
 // https://vite.dev/config/
 export default defineConfig({
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks: vendorChunk,
+      },
+    },
+  },
   plugins: [
     react(),
     authApiDevPlugin(),
@@ -12,8 +33,8 @@ export default defineConfig({
       registerType: 'autoUpdate',
       includeAssets: ['favicon.svg'],
       manifest: {
-        name: 'ChessRat',
-        short_name: 'ChessRat',
+        name: 'ChessLoop',
+        short_name: 'ChessLoop',
         description: 'Échecs et analyse dans le navigateur',
         lang: 'fr',
         start_url: '/',

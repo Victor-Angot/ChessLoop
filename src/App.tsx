@@ -1,18 +1,75 @@
-import { useEffect, useState } from 'react'
+import { lazy, Suspense, useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import clsx from 'clsx'
 import { GraduationCap, Info, type LucideIcon } from 'lucide-react'
 import { useAuth } from './auth/useAuth'
 import { setTrainerDatabaseUser } from './db/database'
-import { AboutPage } from './components/about/AboutPage'
-import { ReviewSession } from './components/ReviewSession'
-import { StatsPanel } from './components/StatsPanel'
-import { LinesList } from './components/LinesList'
-import { PGNImporter } from './components/PGNImporter'
 import { Modal } from './components/ui/Modal'
 import { useTrainingShortcuts } from './hooks/useTrainingShortcuts'
 import type { MainSection } from './stores/chess/storeTypes'
 import { useChessStore } from './stores/useChessStore'
+
+const AboutPage = lazy(() =>
+  import('./components/about/AboutPage').then((m) => ({ default: m.AboutPage })),
+)
+const ReviewSession = lazy(() =>
+  import('./components/ReviewSession').then((m) => ({
+    default: m.ReviewSession,
+  })),
+)
+const StatsPanel = lazy(() =>
+  import('./components/StatsPanel').then((m) => ({ default: m.StatsPanel })),
+)
+const LinesList = lazy(() =>
+  import('./components/LinesList').then((m) => ({ default: m.LinesList })),
+)
+const PGNImporter = lazy(() =>
+  import('./components/PGNImporter').then((m) => ({ default: m.PGNImporter })),
+)
+
+function TrainerSectionFallback() {
+  return (
+    <div
+      className="flex min-h-[320px] items-center justify-center rounded-lg border border-[var(--border)] bg-[var(--surface-2)]/50 text-sm text-[var(--muted)]"
+      role="status"
+      aria-live="polite"
+    >
+      Loading…
+    </div>
+  )
+}
+
+function MainSectionNavItem({
+  id,
+  icon: Icon,
+  label,
+  active,
+  onSelect,
+}: {
+  id: MainSection
+  icon: LucideIcon
+  label: string
+  active: boolean
+  onSelect: (s: MainSection) => void
+}) {
+  return (
+    <button
+      type="button"
+      onClick={() => onSelect(id)}
+      className={clsx(
+        'flex items-center justify-center gap-1.5 rounded-[calc(var(--radius-sm)-1px)] px-[0.85rem] py-2.5 text-sm font-semibold leading-snug transition-[color,background,box-shadow] duration-150',
+        'focus-visible:z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--surface-2)]',
+        active
+          ? 'bg-[var(--accent)] text-white shadow-sm'
+          : 'text-[var(--muted)] hover:bg-[var(--surface-3)] hover:text-[var(--text)]',
+      )}
+      aria-current={active ? 'page' : undefined}
+    >
+      <Icon className="h-4 w-4 shrink-0 opacity-90" aria-hidden />
+      <span className="whitespace-nowrap">{label}</span>
+    </button>
+  )
+}
 
 function MainSectionNav({
   section,
@@ -21,42 +78,25 @@ function MainSectionNav({
   section: MainSection
   onSelect: (s: MainSection) => void
 }) {
-  const Item = ({
-    id,
-    icon: Icon,
-    label,
-  }: {
-    id: MainSection
-    icon: LucideIcon
-    label: string
-  }) => {
-    const active = section === id
-    return (
-      <button
-        type="button"
-        onClick={() => onSelect(id)}
-        className={clsx(
-          'flex items-center justify-center gap-1.5 rounded-[calc(var(--radius-sm)-1px)] px-[0.85rem] py-2.5 text-sm font-semibold leading-snug transition-[color,background,box-shadow] duration-150',
-          'focus-visible:z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--surface-2)]',
-          active
-            ? 'bg-[var(--accent)] text-white shadow-sm'
-            : 'text-[var(--muted)] hover:bg-[var(--surface-3)] hover:text-[var(--text)]',
-        )}
-        aria-current={active ? 'page' : undefined}
-      >
-        <Icon className="h-4 w-4 shrink-0 opacity-90" aria-hidden />
-        <span className="whitespace-nowrap">{label}</span>
-      </button>
-    )
-  }
-
   return (
     <nav
       className="flex min-w-0 rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--surface-2)] p-px shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]"
       aria-label="Main sections"
     >
-      <Item id="trainer" icon={GraduationCap} label="Trainer" />
-      <Item id="about" icon={Info} label="About" />
+      <MainSectionNavItem
+        id="trainer"
+        icon={GraduationCap}
+        label="Trainer"
+        active={section === 'trainer'}
+        onSelect={onSelect}
+      />
+      <MainSectionNavItem
+        id="about"
+        icon={Info}
+        label="About"
+        active={section === 'about'}
+        onSelect={onSelect}
+      />
     </nav>
   )
 }
@@ -173,17 +213,23 @@ export default function App() {
 
       <main className="container-app flex-1 py-8 sm:py-10">
         {mainSection === 'about' ? (
-          <AboutPage />
+          <Suspense fallback={<TrainerSectionFallback />}>
+            <AboutPage />
+          </Suspense>
         ) : (
           <div
             className={`grid gap-6 sm:gap-8 ${analysisEnabled ? '' : 'lg:grid-cols-[minmax(0,1fr)_minmax(22rem,28rem)] xl:grid-cols-[minmax(0,1fr)_minmax(24rem,32rem)]'}`}
           >
             <div className="min-w-0 space-y-4">
-              <ReviewSession />
+              <Suspense fallback={<TrainerSectionFallback />}>
+                <ReviewSession />
+              </Suspense>
             </div>
             {!analysisEnabled ? (
               <div className="min-w-0 space-y-4">
-                <StatsPanel />
+                <Suspense fallback={<TrainerSectionFallback />}>
+                  <StatsPanel />
+                </Suspense>
               </div>
             ) : null}
           </div>
@@ -192,12 +238,16 @@ export default function App() {
 
       {user && showLinesPanel ? (
         <Modal onClose={() => setLinesPanelOpen(false)} className="max-w-4xl">
-          <LinesList />
+          <Suspense fallback={<TrainerSectionFallback />}>
+            <LinesList />
+          </Suspense>
         </Modal>
       ) : null}
       {user && showImportPanel ? (
         <Modal onClose={() => setImportPanelOpen(false)}>
-          <PGNImporter />
+          <Suspense fallback={<TrainerSectionFallback />}>
+            <PGNImporter />
+          </Suspense>
         </Modal>
       ) : null}
     </div>

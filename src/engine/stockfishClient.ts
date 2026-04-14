@@ -19,9 +19,3 @@ export function ensureStockfishEngine(): Promise<StockfishWorkerEngine> {
   }
   return ready
 }
-
-export function disposeStockfishEngine(): void {
-  engine?.dispose()
-  engine = null
-  ready = null
-}

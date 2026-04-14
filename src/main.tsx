@@ -3,9 +3,9 @@ import { createRoot } from 'react-dom/client'
 import { BrowserRouter } from 'react-router-dom'
 import { registerSW } from 'virtual:pwa-register'
 import { AuthProvider } from './auth/AuthProvider'
-import { ParticlesBackground } from './components/ui/ParticlesBackground'
 import './index.css'
 import { GoogleAnalytics } from './analytics/GoogleAnalytics'
+import { LazyParticlesBackground } from './components/ui/LazyParticlesBackground'
 import { AppRoutes } from './routes/AppRoutes'
 
 registerSW({ immediate: true })
@@ -65,7 +65,7 @@ if (!rootEl) {
 createRoot(rootEl).render(
   <StrictMode>
     <ErrorBoundary>
-      <ParticlesBackground />
+      <LazyParticlesBackground />
       <BrowserRouter>
         <GoogleAnalytics />
         <div className="relative z-10 min-h-full">
