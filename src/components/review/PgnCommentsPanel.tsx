@@ -1,6 +1,46 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { extractPgnCommentsForLine } from '../../engine/pgnParser'
 import { useChessStore } from '../../stores/useChessStore'
+
+const PGN_COMMENT_COLLAPSE_CHARS = 800
+
+function truncateCommentForCollapse(text: string, max: number): string {
+  if (text.length <= max) return text
+  const slice = text.slice(0, max)
+  const sp = slice.lastIndexOf(' ')
+  if (sp >= Math.floor(max * 0.55)) return slice.slice(0, sp).trimEnd()
+  return slice.trimEnd()
+}
+
+function ExpandablePgnComment({ text }: { text: string }) {
+  const [expanded, setExpanded] = useState(false)
+  const needsToggle = text.length > PGN_COMMENT_COLLAPSE_CHARS
+
+  useEffect(() => {
+    setExpanded(false)
+  }, [text])
+
+  const display =
+    !needsToggle || expanded
+      ? text
+      : `${truncateCommentForCollapse(text, PGN_COMMENT_COLLAPSE_CHARS)}…`
+
+  return (
+    <div className="space-y-1">
+      <p className="muted break-words text-sm leading-relaxed whitespace-pre-wrap">{display}</p>
+      {needsToggle ? (
+        <button
+          type="button"
+          className="btn btn-ghost h-auto min-h-0 px-0 py-0 text-xs font-medium text-[var(--muted)] hover:text-[var(--text)]"
+          aria-expanded={expanded}
+          onClick={() => setExpanded((v) => !v)}
+        >
+          {expanded ? 'Show less' : 'Show more'}
+        </button>
+      ) : null}
+    </div>
+  )
+}
 
 /** Shown in the right column below Stats during practice (non-idle session). */
 export function PgnCommentsPanel() {
@@ -27,6 +67,11 @@ export function PgnCommentsPanel() {
   const commentsByPly = derivedComments?.byPly ?? []
   const viewNextPly =
     board.history[board.historyIndex]?.lineMovesApplied ?? session.plyIndex
+
+  useEffect(() => {
+    setShowAllComments(false)
+  }, [viewNextPly, session.currentLineId])
+
   /** `byPly[i]` is comments after `moves[i]`; `viewNextPly` is the index of the next move → last played is `viewNextPly - 1`. */
   const commentsForPly = useMemo(() => {
     if (viewNextPly <= 0) return commentsPre
@@ -42,10 +87,8 @@ export function PgnCommentsPanel() {
     return [...commentsPre, ...flat]
   }, [commentsByPly, commentsPre])
 
-  const compactComments = useMemo(() => {
-    if (commentsForPly.length > 0) return commentsForPly
-    return allComments
-  }, [allComments, commentsForPly])
+  const displayedComments = showAllComments ? allComments : commentsForPly
+  const canShowAllToggle = allComments.length > commentsForPly.length
 
   if (session.status === 'idle') return null
 
@@ -71,7 +114,7 @@ export function PgnCommentsPanel() {
         <h2 className="text-sm font-bold uppercase tracking-wide text-[var(--muted)]">
           PGN comments
         </h2>
-        {allComments.length > compactComments.length ? (
+        {canShowAllToggle ? (
           <button
             type="button"
             className="btn btn-ghost btn-icon text-[var(--muted)] hover:text-[var(--text)]"
@@ -82,11 +125,15 @@ export function PgnCommentsPanel() {
           </button>
         ) : null}
       </div>
-      <div className="space-y-1.5">
-        {(showAllComments ? allComments : compactComments).map((c, idx) => (
-          <p key={idx} className="muted text-sm leading-relaxed">
-            {c}
-          </p>
+      {displayedComments.length === 0 && !showAllComments ? (
+        <p className="muted text-sm leading-relaxed">No comment for this position.</p>
+      ) : null}
+      <div className="space-y-3">
+        {displayedComments.map((c, idx) => (
+          <ExpandablePgnComment
+            key={`${line.id}-${viewNextPly}-${showAllComments}-${idx}-${c.length}`}
+            text={c}
+          />
         ))}
       </div>
     </aside>
