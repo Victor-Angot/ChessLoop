@@ -27,11 +27,13 @@ export function PgnCommentsPanel() {
   const commentsByPly = derivedComments?.byPly ?? []
   const viewNextPly =
     board.history[board.historyIndex]?.lineMovesApplied ?? session.plyIndex
+  /** `byPly[i]` is comments after `moves[i]`; `viewNextPly` is the index of the next move → last played is `viewNextPly - 1`. */
   const commentsForPly = useMemo(() => {
-    const current = commentsByPly[viewNextPly] ?? []
-    const prev = commentsByPly[Math.max(0, viewNextPly - 1)] ?? []
-    if (current.length) return current
-    if (prev.length) return prev
+    if (viewNextPly <= 0) return commentsPre
+    const afterLastPlayed = commentsByPly[viewNextPly - 1] ?? []
+    if (afterLastPlayed.length) return afterLastPlayed
+    const earlier = viewNextPly >= 2 ? (commentsByPly[viewNextPly - 2] ?? []) : []
+    if (earlier.length) return earlier
     return commentsPre
   }, [commentsByPly, commentsPre, viewNextPly])
 
