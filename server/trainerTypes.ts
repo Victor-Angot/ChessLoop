@@ -12,6 +12,11 @@ export interface TrainerChessLine {
   repertoireId: string
   pgn: string
   moves: string[]
+  excluded?: boolean
+  comments?: {
+    pre?: string[]
+    byPly?: string[][]
+  }
   startFEN?: string
   metadata: {
     title: string

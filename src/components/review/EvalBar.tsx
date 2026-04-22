@@ -1,7 +1,11 @@
-import { scoreToWhiteCp, whiteCpToBarPercent } from '../../engine/evalBar'
+import {
+  formatEvalFromWhitePerspective,
+  scoreToWhiteCp,
+  whiteCpToBarPercent,
+} from '../../engine/evalBar'
 import type { StockfishScore } from '../../types/stockfishDisplay'
 
-/** Chess.com-style vertical eval: light fill from the top (White advantage), dark below. */
+/** Vertical eval bar: White above, Black below; flat black/white fill. */
 export function EvalBar({
   fen,
   score,
@@ -14,22 +18,36 @@ export function EvalBar({
   className?: string
 }) {
   const whiteCp = scoreToWhiteCp(fen, score)
-  const percent = analyzing || !score ? 50 : whiteCpToBarPercent(whiteCp)
+  const percent = analyzing && !score ? 50 : !score ? 50 : whiteCpToBarPercent(whiteCp)
+  const label =
+    analyzing && !score ? '…' : score ? formatEvalFromWhitePerspective(fen, score) : '—'
+  const aria =
+    analyzing && !score
+      ? 'Evaluation: analyzing'
+      : score
+        ? `Evaluation from White’s perspective: ${label}. Bar: White toward the top.`
+        : 'Evaluation bar: no score yet'
 
   return (
     <div
-      className={`relative h-full min-h-0 w-14 shrink-0 overflow-hidden rounded-sm border border-black/50 bg-[#2a2a2a] shadow-[inset_0_0_0_1px_rgba(255,255,255,0.06)] sm:w-16 ${className}`}
-      role="img"
-      aria-label="Evaluation bar: White toward the top, Black toward the bottom"
+      className={`flex min-h-0 w-9 shrink-0 flex-col items-stretch gap-1 sm:w-10 ${className}`}
     >
       <div
-        className="absolute inset-x-0 top-0 bg-gradient-to-b from-[#f3f3f2] via-[#d6d6d4] to-[#9a9a96]"
-        style={{ height: `${percent}%` }}
-      />
+        className="select-none text-center font-mono text-[10px] leading-none tabular-nums text-[var(--text)] sm:text-xs"
+        aria-hidden
+      >
+        {label}
+      </div>
       <div
-        className="pointer-events-none absolute inset-x-0.5 z-10 h-[3px] rounded-full bg-white shadow-[0_0_0_1px_rgba(0,0,0,0.35),0_1px_3px_rgba(0,0,0,0.5)]"
-        style={{ top: `calc(${percent}% - 1.5px)` }}
-      />
+        className="relative min-h-[100px] flex-1 overflow-hidden border border-[var(--text)] bg-black"
+        role="img"
+        aria-label={aria}
+      >
+        <div
+          className="absolute inset-x-0 top-0 bg-white"
+          style={{ height: `${percent}%` }}
+        />
+      </div>
     </div>
   )
 }

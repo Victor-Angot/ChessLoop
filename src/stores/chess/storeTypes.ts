@@ -14,6 +14,8 @@ export type LastOpponentMove = { from: string; to: string; san: string } | null
 export interface BoardSnapshot {
   fen: string
   lastOpponentMove: LastOpponentMove
+  /** How many moves from `line.moves` are on the board; equals index of the next move to play. */
+  lineMovesApplied?: number
 }
 
 export type SessionOverlay =

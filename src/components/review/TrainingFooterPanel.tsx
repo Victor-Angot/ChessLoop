@@ -7,6 +7,7 @@ export function TrainingFooterPanel({
   incorrectFromTo: { from: string; to: string } | null
 }) {
   const board = useChessStore((s) => s.board)
+  const lines = useChessStore((s) => s.lines)
   const session = useChessStore((s) => s.session)
   const reviewMode = useChessStore((s) => s.reviewMode)
   const navPrev = useChessStore((s) => s.navPrev)
@@ -18,6 +19,11 @@ export function TrainingFooterPanel({
 
   const atLive = board.historyIndex === board.history.length - 1
   const overlay = session.overlay
+  const line = lines.find((l) => l.id === session.currentLineId)
+  const applied =
+    board.history[board.historyIndex]?.lineMovesApplied ??
+    session.plyIndex
+  const lineLen = line?.moves.length
 
   return (
     <footer className="space-y-3 border-t border-[var(--border)] p-4">
@@ -48,6 +54,7 @@ export function TrainingFooterPanel({
         </button>
         <span className="muted text-xs">
           Ply {board.historyIndex + 1}/{board.history.length}
+          {lineLen != null ? ` · line ${applied}/${lineLen}` : ''}
           {!atLive ? ' · read-only' : ''}
         </span>
         <button

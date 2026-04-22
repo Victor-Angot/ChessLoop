@@ -35,8 +35,8 @@ export default defineConfig({
       manifest: {
         name: 'ChessLoop',
         short_name: 'ChessLoop',
-        description: 'Échecs et analyse dans le navigateur',
-        lang: 'fr',
+        description: 'Chess training and analysis in your browser',
+        lang: 'en',
         start_url: '/',
         scope: '/',
         display: 'standalone',

@@ -26,6 +26,7 @@ const LinesList = lazy(() =>
 const PGNImporter = lazy(() =>
   import('./components/PGNImporter').then((m) => ({ default: m.PGNImporter })),
 )
+import { PgnCommentsPanel } from './components/review/PgnCommentsPanel'
 
 function TrainerSectionFallback() {
   return (
@@ -230,6 +231,7 @@ export default function App() {
                 <Suspense fallback={<TrainerSectionFallback />}>
                   <StatsPanel />
                 </Suspense>
+                <PgnCommentsPanel />
               </div>
             ) : null}
           </div>

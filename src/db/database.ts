@@ -74,13 +74,15 @@ export async function bulkUpsertRepertoires(
 
 export async function getAllLines(): Promise<ChessLine[]> {
   const { lines } = await loadSnapshot()
-  return lines
+  return lines.filter((l) => !l.excluded)
 }
 
 export async function getDueLines(now: Date): Promise<ChessLine[]> {
   if (!hasTrainerDatabase()) return []
   const { lines } = await loadSnapshot()
-  return lines.filter((l) => l.srs.nextReview.getTime() <= now.getTime())
+  return lines.filter(
+    (l) => !l.excluded && l.srs.nextReview.getTime() <= now.getTime(),
+  )
 }
 
 export async function deleteRepertoire(id: string): Promise<void> {

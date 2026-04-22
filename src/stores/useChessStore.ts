@@ -19,7 +19,9 @@ import {
   ANALYSIS_DEPTH_MIN,
   type AnalysisModeState,
   type AnalysisMultiPv,
+  type BoardSnapshot,
   type BoardState,
+  type LastOpponentMove,
   type MainSection,
   type SessionState,
   type StoreState,
@@ -54,6 +56,9 @@ type ChessStore = StoreState & {
   setMainSection: (s: MainSection) => void
   startSession: () => Promise<void>
   startRandomSession: (opts?: { title?: string | null }) => Promise<void>
+  startLineSession: (lineId: string) => Promise<void>
+  setLineExcluded: (lineId: string, excluded: boolean) => Promise<void>
+  excludeCurrentLineFromLearning: () => Promise<void>
   resetAttempt: () => Promise<void>
   hint: () => void
   skip: () => Promise<void>
@@ -83,9 +88,38 @@ function emptyBoard(): BoardState {
     fen,
     hintSquares: null,
     lastOpponentMove: null,
-    history: [{ fen, lastOpponentMove: null }],
+    history: [{ fen, lastOpponentMove: null, lineMovesApplied: 0 }],
     historyIndex: 0,
   }
+}
+
+function buildTrainingLineHistory(
+  line: ChessLine,
+  userColor: TrainerColor,
+  nextMoveIndex: number,
+): BoardSnapshot[] {
+  const chess = new Chess(line.startFEN)
+  let lastOpponentMove: LastOpponentMove = null
+  const history: BoardSnapshot[] = [
+    { fen: chess.fen(), lastOpponentMove: null, lineMovesApplied: 0 },
+  ]
+  for (let p = 0; p < nextMoveIndex; p++) {
+    const played = chess.move(line.moves[p]!, { strict: false })
+    if (!played) break
+    if (!isUsersTurn(userColor, p)) {
+      lastOpponentMove = {
+        from: played.from,
+        to: played.to,
+        san: played.san,
+      }
+    }
+    history.push({
+      fen: chess.fen(),
+      lastOpponentMove,
+      lineMovesApplied: p + 1,
+    })
+  }
+  return history
 }
 
 /** Movetime ceiling for UCI `go depth … movetime …` (higher depth needs more wall time in the browser). */
@@ -325,7 +359,7 @@ export const useChessStore = create<ChessStore>()((set, get) => ({
   startSession: async () => {
     const now = new Date(get().clockNowMs || Date.now())
     const due = await getDueLines(now)
-    const eligibleDue = due.filter((l) => l.srs.seen)
+    const eligibleDue = due.filter((l) => l.srs.seen && !l.excluded)
     const { filters } = get()
     const scoped = eligibleDue.filter((l) => filterLine(l, filters, undefined))
     const queue = scoped.map((l) => l.id)
@@ -355,8 +389,12 @@ export const useChessStore = create<ChessStore>()((set, get) => ({
     const all = await getAllLines()
     const { filters } = get()
     const titleOv = opts?.title
-    const dueScoped = due.filter((l) => filterLine(l, filters, titleOv))
-    const allScoped = all.filter((l) => filterLine(l, filters, titleOv))
+    const dueScoped = due
+      .filter((l) => !l.excluded)
+      .filter((l) => filterLine(l, filters, titleOv))
+    const allScoped = all
+      .filter((l) => !l.excluded)
+      .filter((l) => filterLine(l, filters, titleOv))
     const pool =
       dueScoped.length > 0 ? dueScoped : allScoped
     const ids = pool.map((l) => l.id)
@@ -386,6 +424,48 @@ export const useChessStore = create<ChessStore>()((set, get) => ({
     set({ session, board })
   },
 
+  startLineSession: async (lineId) => {
+    const line = get().lines.find((l) => l.id === lineId)
+    if (!line) return
+    get().exitAnalysisMode()
+    const session: SessionState = {
+      ...initialSession(),
+      queue: [lineId],
+      currentLineId: lineId,
+      total: 1,
+      done: 0,
+      status: 'running',
+      userColor: line.metadata.color,
+    }
+    set((s) => ({
+      session,
+      board: emptyBoard(),
+      filters: {
+        ...s.filters,
+        repertoireId: line.repertoireId,
+        title: line.metadata.title,
+      },
+    }))
+    await get().resetAttempt()
+  },
+
+  setLineExcluded: async (lineId, excluded) => {
+    const line = get().lines.find((l) => l.id === lineId)
+    if (!line) return
+    line.excluded = excluded
+    await persistLine(line)
+    set((s) => ({
+      lines: s.lines.map((x) => (x.id === line.id ? { ...line } : x)),
+    }))
+  },
+
+  excludeCurrentLineFromLearning: async () => {
+    const cur = get().session.currentLineId
+    if (!cur) return
+    await get().setLineExcluded(cur, true)
+    await get().next()
+  },
+
   resetAttempt: async () => {
     const lineId = get().session.currentLineId
     if (!lineId) return
@@ -404,7 +484,6 @@ export const useChessStore = create<ChessStore>()((set, get) => ({
     const userColor = line.metadata.color
     const chess = new Chess(line.startFEN)
     let plyIndex = 0
-    let lastOpponentMove: import('./chess/storeTypes').LastOpponentMove = null
 
     while (
       plyIndex < line.moves.length &&
@@ -412,22 +491,19 @@ export const useChessStore = create<ChessStore>()((set, get) => ({
     ) {
       const played = chess.move(line.moves[plyIndex]!, { strict: false })
       if (!played) break
-      lastOpponentMove = {
-        from: played.from,
-        to: played.to,
-        san: played.san,
-      }
       plyIndex += 1
     }
 
-    const fen = chess.fen()
+    const history = buildTrainingLineHistory(line, userColor, plyIndex)
+    const lastSnap = history[history.length - 1]!
+    const chessAt = new Chess(lastSnap.fen)
     const board: BoardState = {
-      chess,
-      fen,
+      chess: chessAt,
+      fen: lastSnap.fen,
       hintSquares: null,
-      lastOpponentMove,
-      history: [{ fen, lastOpponentMove }],
-      historyIndex: 0,
+      lastOpponentMove: lastSnap.lastOpponentMove,
+      history,
+      historyIndex: history.length - 1,
     }
 
     set({
@@ -543,21 +619,29 @@ export const useChessStore = create<ChessStore>()((set, get) => ({
     const chess = new Chess(board.chess.fen())
     chess.move({ from, to, promotion: promotion ?? 'q' }, { strict: false })
     let plyIndex = session.plyIndex + 1
-    let lastOpponentMove: import('./chess/storeTypes').LastOpponentMove =
-      board.lastOpponentMove
+    let lastOpponentMove: LastOpponentMove = board.lastOpponentMove
+
+    const snaps: BoardSnapshot[] = [
+      {
+        fen: chess.fen(),
+        lastOpponentMove,
+        lineMovesApplied: plyIndex,
+      },
+    ]
 
     while (plyIndex < line.moves.length && !isUsersTurn(session.userColor, plyIndex)) {
       const om = chess.move(line.moves[plyIndex]!, { strict: false })
       if (!om) break
       lastOpponentMove = { from: om.from, to: om.to, san: om.san }
       plyIndex += 1
+      snaps.push({
+        fen: chess.fen(),
+        lastOpponentMove,
+        lineMovesApplied: plyIndex,
+      })
     }
 
     const fen = chess.fen()
-    const snap: import('./chess/storeTypes').BoardSnapshot = {
-      fen,
-      lastOpponentMove,
-    }
 
     if (plyIndex >= line.moves.length) {
       const quality = computeQualitySuccess({
@@ -576,8 +660,8 @@ export const useChessStore = create<ChessStore>()((set, get) => ({
           chess,
           fen,
           lastOpponentMove,
-          history: [...board.history, snap],
-          historyIndex: board.history.length,
+          history: [...board.history, ...snaps],
+          historyIndex: board.history.length + snaps.length - 1,
         },
         session: {
           ...session,
@@ -599,8 +683,8 @@ export const useChessStore = create<ChessStore>()((set, get) => ({
         chess,
         fen,
         lastOpponentMove,
-        history: [...board.history, snap],
-        historyIndex: board.history.length,
+        history: [...board.history, ...snaps],
+        historyIndex: board.history.length + snaps.length - 1,
       },
       session: {
         ...session,
@@ -625,21 +709,29 @@ export const useChessStore = create<ChessStore>()((set, get) => ({
     const um = chess.move(expected, { strict: false })
     if (!um) return
     let plyIndex = session.plyIndex + 1
-    let lastOpponentMove: import('./chess/storeTypes').LastOpponentMove =
-      board.lastOpponentMove
+    let lastOpponentMove: LastOpponentMove = board.lastOpponentMove
+
+    const snaps: BoardSnapshot[] = [
+      {
+        fen: chess.fen(),
+        lastOpponentMove,
+        lineMovesApplied: plyIndex,
+      },
+    ]
 
     while (plyIndex < line.moves.length && !isUsersTurn(session.userColor, plyIndex)) {
       const om = chess.move(line.moves[plyIndex]!, { strict: false })
       if (!om) break
       lastOpponentMove = { from: om.from, to: om.to, san: om.san }
       plyIndex += 1
+      snaps.push({
+        fen: chess.fen(),
+        lastOpponentMove,
+        lineMovesApplied: plyIndex,
+      })
     }
 
     const fen = chess.fen()
-    const snap: import('./chess/storeTypes').BoardSnapshot = {
-      fen,
-      lastOpponentMove,
-    }
 
     set({
       board: {
@@ -648,8 +740,8 @@ export const useChessStore = create<ChessStore>()((set, get) => ({
         fen,
         lastOpponentMove,
         hintSquares: null,
-        history: [...board.history, snap],
-        historyIndex: board.history.length,
+        history: [...board.history, ...snaps],
+        historyIndex: board.history.length + snaps.length - 1,
       },
       session: {
         ...session,

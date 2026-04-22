@@ -20,3 +20,23 @@ export function whiteCpToBarPercent(whiteCp: number): number {
   const t = Math.tanh(whiteCp / 380)
   return Math.min(100, Math.max(0, 50 + 50 * t))
 }
+
+/** Human-readable eval from White’s perspective (matches the bar: positive = White better). */
+export function formatEvalFromWhitePerspective(
+  fen: string,
+  score: StockfishScore | null,
+): string {
+  if (!score) return '—'
+  if (score.type === 'cp') {
+    const whiteCp = scoreToWhiteCp(fen, score)
+    const p = whiteCp / 100
+    const sign = p >= 0 ? '+' : ''
+    return `${sign}${p.toFixed(2)}`
+  }
+  const stm = new Chess(fen).turn()
+  const m = score.value
+  const forWhite = stm === 'w' ? m : -m
+  if (forWhite > 0) return `+#${forWhite}`
+  if (forWhite < 0) return `-#${Math.abs(forWhite)}`
+  return '#0'
+}
