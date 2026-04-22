@@ -93,12 +93,48 @@ function emptyBoard(): BoardState {
   }
 }
 
+/** Replay from line start; `null` if movetext does not reach `nextMovePly` (SAN/FEN mismatch). */
+function boardStateAtLinePly(
+  line: ChessLine,
+  userColor: TrainerColor,
+  nextMovePly: number,
+): { board: BoardState; syncPly: number } | null {
+  const history = buildTrainingLineHistory(line, userColor, nextMovePly)
+  const lastSnap = history[history.length - 1]!
+  const applied = lastSnap.lineMovesApplied ?? 0
+  if (applied !== nextMovePly) return null
+  const chessAt = new Chess(lastSnap.fen)
+  const board: BoardState = {
+    chess: chessAt,
+    fen: lastSnap.fen,
+    hintSquares: null,
+    lastOpponentMove: lastSnap.lastOpponentMove,
+    history,
+    historyIndex: history.length - 1,
+  }
+  return { board, syncPly: applied }
+}
+
+function collectMistakePlies(session: SessionState, line: ChessLine): number[] {
+  const raw = session.mistakeUserPlies
+  const list = Array.isArray(raw) ? raw : []
+  return [...new Set(list)]
+    .filter((n) => Number.isInteger(n) && n >= 0 && n < line.moves.length)
+    .sort((a, b) => a - b)
+}
+
+function addMistakePly(session: SessionState, ply: number): number[] {
+  const arr = [...(session.mistakeUserPlies ?? [])]
+  if (!arr.includes(ply)) arr.push(ply)
+  return arr
+}
+
 function buildTrainingLineHistory(
   line: ChessLine,
   userColor: TrainerColor,
   nextMoveIndex: number,
 ): BoardSnapshot[] {
-  const chess = new Chess(line.startFEN)
+  const chess = new Chess(line.startFEN ?? undefined)
   let lastOpponentMove: LastOpponentMove = null
   const history: BoardSnapshot[] = [
     { fen: chess.fen(), lastOpponentMove: null, lineMovesApplied: 0 },
@@ -201,6 +237,8 @@ function initialSession(): SessionState {
     status: 'idle',
     plyIndex: 0,
     userColor: 'white',
+    mistakeUserPlies: [],
+    remediation: null,
     attempt: { usedHint: false, madeMistake: false, correctUserPlies: 0 },
     overlay: null,
   }
@@ -482,7 +520,7 @@ export const useChessStore = create<ChessStore>()((set, get) => ({
     }
 
     const userColor = line.metadata.color
-    const chess = new Chess(line.startFEN)
+    const chess = new Chess(line.startFEN ?? undefined)
     let plyIndex = 0
 
     while (
@@ -505,16 +543,19 @@ export const useChessStore = create<ChessStore>()((set, get) => ({
       history,
       historyIndex: history.length - 1,
     }
+    const syncPly = lastSnap.lineMovesApplied ?? plyIndex
 
     set({
       board,
       session: {
         ...get().session,
         status: 'running',
-        plyIndex,
+        plyIndex: syncPly,
         userColor,
         overlay: null,
         attempt: { usedHint: false, madeMistake: false, correctUserPlies: 0 },
+        mistakeUserPlies: [],
+        remediation: null,
       },
     })
   },
@@ -562,6 +603,8 @@ export const useChessStore = create<ChessStore>()((set, get) => ({
         ...session,
         status: 'answered',
         overlay: { type: 'skipped' },
+        mistakeUserPlies: [],
+        remediation: null,
       },
     }))
   },
@@ -585,6 +628,7 @@ export const useChessStore = create<ChessStore>()((set, get) => ({
     const nextBoardBase = { ...board, hintSquares: null }
 
     if (!played || played.san !== expected) {
+      const mistakeUserPlies = addMistakePly(session, session.plyIndex)
       const quality = computeQualityMistake(session.attempt.correctUserPlies)
       if (reviewMode === 'hard_fail') {
         line.stats.attempts += 1
@@ -600,6 +644,7 @@ export const useChessStore = create<ChessStore>()((set, get) => ({
             status: 'answered',
             overlay: { type: 'incorrect', expectedSAN: expected },
             attempt: { ...session.attempt, madeMistake: true },
+            mistakeUserPlies,
           },
         }))
         return
@@ -611,15 +656,102 @@ export const useChessStore = create<ChessStore>()((set, get) => ({
           status: 'answered',
           overlay: { type: 'incorrect', expectedSAN: expected },
           attempt: { ...session.attempt, madeMistake: true },
+          mistakeUserPlies,
         },
       })
       return
     }
 
+    const beforePly = session.plyIndex
     const chess = new Chess(board.chess.fen())
     chess.move({ from, to, promotion: promotion ?? 'q' }, { strict: false })
     let plyIndex = session.plyIndex + 1
     let lastOpponentMove: LastOpponentMove = board.lastOpponentMove
+
+    const rem = session.remediation
+    if (rem && rem.queue[0] === beforePly) {
+      const nextQueue = rem.queue.slice(1)
+      const correctPlies = session.attempt.correctUserPlies + 1
+      if (nextQueue.length === 0) {
+        const end = boardStateAtLinePly(line, session.userColor, line.moves.length)
+        let endBoard: BoardState
+        if (end) {
+          endBoard = end.board
+        } else {
+          let c = chess
+          let pi = beforePly + 1
+          let lom: LastOpponentMove = lastOpponentMove
+          const tail: BoardSnapshot[] = []
+          while (pi < line.moves.length) {
+            const om = c.move(line.moves[pi]!, { strict: false })
+            if (!om) break
+            if (!isUsersTurn(session.userColor, pi)) {
+              lom = { from: om.from, to: om.to, san: om.san }
+            }
+            pi += 1
+            tail.push({ fen: c.fen(), lastOpponentMove: lom, lineMovesApplied: pi })
+          }
+          endBoard = {
+            ...nextBoardBase,
+            chess: c,
+            fen: c.fen(),
+            lastOpponentMove: lom,
+            history: [...board.history, ...tail],
+            historyIndex: board.history.length + tail.length - 1,
+          }
+        }
+        const quality = computeQualitySuccess({
+          ...session.attempt,
+          correctUserPlies: correctPlies,
+        })
+        line.stats.attempts += 1
+        line.stats.lastScore = quality
+        if (quality >= 3) line.stats.successes += 1
+        reviewLine(line, quality)
+        void persistLine(line)
+        set((s) => ({
+          lines: s.lines.map((x) => (x.id === line.id ? { ...line } : x)),
+          board: endBoard,
+          session: {
+            ...session,
+            plyIndex: line.moves.length,
+            status: 'answered',
+            overlay: { type: 'correct' },
+            remediation: null,
+            mistakeUserPlies: [],
+            attempt: {
+              ...session.attempt,
+              correctUserPlies: correctPlies,
+            },
+          },
+        }))
+        return
+      }
+      let nextPly = nextQueue[0]!
+      let restQ = nextQueue
+      let atNext = boardStateAtLinePly(line, session.userColor, nextPly)
+      while (!atNext && restQ.length > 1) {
+        restQ = restQ.slice(1)
+        nextPly = restQ[0]!
+        atNext = boardStateAtLinePly(line, session.userColor, nextPly)
+      }
+      if (!atNext) return
+      set({
+        board: atNext.board,
+        session: {
+          ...session,
+          plyIndex: atNext.syncPly,
+          remediation: { queue: restQ },
+          status: 'running',
+          overlay: null,
+          attempt: {
+            ...session.attempt,
+            correctUserPlies: correctPlies,
+          },
+        },
+      })
+      return
+    }
 
     const snaps: BoardSnapshot[] = [
       {
@@ -644,6 +776,32 @@ export const useChessStore = create<ChessStore>()((set, get) => ({
     const fen = chess.fen()
 
     if (plyIndex >= line.moves.length) {
+      const live = get().session
+      const mistakes = collectMistakePlies(live, line)
+      if (mistakes.length > 0 && !live.remediation) {
+        const firstPly = mistakes[0]!
+        const atFirst = boardStateAtLinePly(line, live.userColor, firstPly)
+        const correctPlies = live.attempt.correctUserPlies + 1
+        if (atFirst) {
+          set({
+            board: atFirst.board,
+            session: {
+              ...live,
+              plyIndex: atFirst.syncPly,
+              status: 'running',
+              overlay: null,
+              remediation: { queue: mistakes },
+              mistakeUserPlies: [],
+              attempt: {
+                ...live.attempt,
+                correctUserPlies: correctPlies,
+              },
+            },
+          })
+          return
+        }
+      }
+
       const quality = computeQualitySuccess({
         ...session.attempt,
         correctUserPlies: session.attempt.correctUserPlies + 1,
@@ -668,6 +826,8 @@ export const useChessStore = create<ChessStore>()((set, get) => ({
           plyIndex,
           status: 'answered',
           overlay: { type: 'correct' },
+          remediation: null,
+          mistakeUserPlies: [],
           attempt: {
             ...session.attempt,
             correctUserPlies: session.attempt.correctUserPlies + 1,

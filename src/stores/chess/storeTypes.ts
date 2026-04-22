@@ -32,6 +32,10 @@ export interface SessionState {
   status: 'idle' | 'running' | 'answered'
   plyIndex: number
   userColor: TrainerColor
+  /** User plies where the answer was wrong (deduped when building remediation). */
+  mistakeUserPlies: number[]
+  /** After a full line with mistakes: replay only these user plies in order; null when inactive. */
+  remediation: null | { queue: number[] }
   attempt: {
     usedHint: boolean
     madeMistake: boolean

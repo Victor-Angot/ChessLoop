@@ -24,6 +24,7 @@ export function TrainingFooterPanel({
     board.history[board.historyIndex]?.lineMovesApplied ??
     session.plyIndex
   const lineLen = line?.moves.length
+  const remediation = session.remediation
 
   return (
     <footer className="space-y-3 border-t border-[var(--border)] p-4">
@@ -67,6 +68,13 @@ export function TrainingFooterPanel({
         </button>
       </div>
 
+      {remediation && session.status === 'running' ? (
+        <p className="muted text-xs leading-relaxed">
+          Replay {remediation.queue.length} missed move
+          {remediation.queue.length === 1 ? '' : 's'} (same order as in your run).
+        </p>
+      ) : null}
+
       {overlay?.type === 'correct' ? (
         <div className="subcard panel text-sm text-emerald-200">
           Line complete. Nice work.
@@ -108,9 +116,6 @@ export function TrainingFooterPanel({
                 Continue
               </button>
             ) : null}
-            <button type="button" className="btn" onClick={() => void next()}>
-              Next line
-            </button>
           </div>
         </div>
       ) : null}
