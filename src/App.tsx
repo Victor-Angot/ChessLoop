@@ -165,7 +165,10 @@ export default function App() {
   return (
     <div className="app-shell">
       <header className="topbar">
-        <div className="container-app py-3 sm:py-4">
+        <div
+          className="container-app pb-3 pt-3 sm:py-4"
+          style={{ paddingTop: 'calc(0.75rem + env(safe-area-inset-top))' }}
+        >
           <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2.5 sm:gap-x-4">
             <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-4 gap-y-2 sm:gap-x-6">
               <div className="flex min-w-0 shrink-0 items-center gap-2.5">

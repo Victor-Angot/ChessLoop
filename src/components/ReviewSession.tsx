@@ -320,7 +320,7 @@ export function ReviewSession() {
   return (
     <section className="card overflow-hidden">
       <TrainingHeader />
-      <div className="p-4">
+      <div className="p-2 sm:p-4">
         <Board
           fen={board.fen}
           boardOrientation={line?.metadata.color ?? 'white'}
