@@ -31,7 +31,7 @@ export default defineConfig({
     authApiDevPlugin(),
     VitePWA({
       registerType: 'autoUpdate',
-      includeAssets: ['favicon.svg'],
+      includeAssets: ['favicon.svg', 'favicon.ico'],
       manifest: {
         name: 'ChessLoop',
         short_name: 'ChessLoop',
@@ -45,19 +45,18 @@ export default defineConfig({
         background_color: '#0c0f14',
         icons: [
           {
-            src: 'pwa-192.png',
+            src: 'pwa-192x192.png',
             sizes: '192x192',
             type: 'image/png',
-            purpose: 'any',
           },
           {
-            src: 'pwa-512.png',
+            src: 'pwa-512x512.png',
             sizes: '512x512',
             type: 'image/png',
             purpose: 'any',
           },
           {
-            src: 'pwa-512.png',
+            src: 'maskable-icon-512x512.png',
             sizes: '512x512',
             type: 'image/png',
             purpose: 'maskable',

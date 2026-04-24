@@ -1,13 +1,21 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../auth/useAuth'
 import { fetchAdminAnalytics, type AnalyticsSummary } from '../lib/authApi'
+import { Activity, ShieldCheck } from 'lucide-react'
 
 export default function AdminAnalyticsPage() {
   const { user, status } = useAuth()
   const [data, setData] = useState<AnalyticsSummary | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
+
+  const spark = useMemo(() => {
+    if (!data?.loginsByDay?.length) return null
+    const values = data.loginsByDay.map((d) => d.count)
+    const max = Math.max(...values, 1)
+    return { max, values }
+  }, [data])
 
   useEffect(() => {
     if (status !== 'ready' || !user?.is_admin) {
@@ -83,13 +91,65 @@ export default function AdminAnalyticsPage() {
   return (
     <div className="app-shell">
       <main className="container-app flex flex-1 flex-col py-16 sm:py-20">
-        <div className="card w-full max-w-2xl panel space-y-6">
-          <div className="flex flex-wrap items-baseline justify-between gap-2">
-            <h1 className="text-lg font-bold">Site analytics</h1>
-            <Link to="/account" className="muted text-sm hover:text-[var(--text)]">
-              Account
-            </Link>
+        <div className="relative w-full max-w-2xl">
+          <div
+            aria-hidden="true"
+            className="pointer-events-none absolute -top-10 left-1/2 h-40 w-[calc(100%+3rem)] -translate-x-1/2 overflow-hidden"
+          >
+            <svg
+              className="h-full w-full opacity-[0.9]"
+              viewBox="0 0 1200 220"
+              preserveAspectRatio="none"
+            >
+              <defs>
+                <linearGradient id="adminCurve" x1="0" x2="1" y1="0" y2="1">
+                  <stop offset="0%" stopColor="rgba(91, 140, 255, 0.26)" />
+                  <stop offset="55%" stopColor="rgba(124, 92, 255, 0.18)" />
+                  <stop offset="100%" stopColor="rgba(91, 140, 255, 0.06)" />
+                </linearGradient>
+                <radialGradient id="adminGlow" cx="30%" cy="0%" r="70%">
+                  <stop offset="0%" stopColor="rgba(255,255,255,0.14)" />
+                  <stop offset="60%" stopColor="rgba(255,255,255,0.00)" />
+                </radialGradient>
+              </defs>
+              <path
+                d="M0,120 C220,30 420,10 600,60 C780,110 980,120 1200,55 L1200,220 L0,220 Z"
+                fill="url(#adminCurve)"
+              />
+              <path
+                d="M0,120 C220,30 420,10 600,60 C780,110 980,120 1200,55"
+                fill="none"
+                stroke="rgba(255,255,255,0.10)"
+                strokeWidth="1"
+              />
+              <rect width="1200" height="220" fill="url(#adminGlow)" />
+            </svg>
           </div>
+
+          <div className="card relative w-full panel space-y-6">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="flex min-w-0 items-center gap-3">
+                <span className="grid h-9 w-9 place-items-center rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--surface-2)]">
+                  <Activity className="h-4 w-4 text-[var(--text)]" aria-hidden="true" />
+                </span>
+                <div className="min-w-0">
+                  <h1 className="text-lg font-bold leading-tight">Site analytics</h1>
+                  <p className="muted text-xs">Admin-only operational overview</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="badge">
+                  <ShieldCheck className="h-3.5 w-3.5" aria-hidden="true" />
+                  Admin
+                </span>
+                <Link
+                  to="/account"
+                  className="muted text-sm hover:text-[var(--text)]"
+                >
+                  Account
+                </Link>
+              </div>
+            </div>
           <p className="muted text-xs">
             Counts come from this app’s database (registered accounts and successful
             sign-ins). For traffic and funnels, use your Google Analytics property.
@@ -128,6 +188,40 @@ export default function AdminAnalyticsPage() {
                 </div>
               </dl>
 
+              {spark ? (
+                <div className="rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--surface-2)] p-4">
+                  <div className="flex items-baseline justify-between gap-3">
+                    <h2 className="text-sm font-semibold">Activity sparkline</h2>
+                    <p className="muted text-xs tabular-nums">14d · max {spark.max}</p>
+                  </div>
+                  <div className="mt-3 flex h-14 items-end gap-1">
+                    {spark.values.map((v, idx) => {
+                      const h = Math.max(2, Math.round((v / spark.max) * 56))
+                      const isLast = idx === spark.values.length - 1
+                      return (
+                        <div
+                          // eslint-disable-next-line react/no-array-index-key
+                          key={idx}
+                          className="flex-1"
+                        >
+                          <div
+                            className={[
+                              'w-full rounded-sm',
+                              isLast
+                                ? 'bg-[linear-gradient(135deg,var(--accent),var(--accent-2))]'
+                                : 'bg-[color-mix(in_srgb,var(--accent)_35%,var(--surface-3))]',
+                            ].join(' ')}
+                            style={{ height: `${h}px` }}
+                            title={`${v}`}
+                            aria-hidden="true"
+                          />
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              ) : null}
+
               <div>
                 <h2 className="mb-2 text-sm font-semibold">Sign-ins by day (14 days)</h2>
                 <div className="overflow-x-auto rounded-[var(--radius-sm)] border border-[var(--border)]">
@@ -164,6 +258,7 @@ export default function AdminAnalyticsPage() {
               </div>
             </>
           ) : null}
+        </div>
         </div>
       </main>
     </div>
