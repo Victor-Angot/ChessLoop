@@ -78,6 +78,34 @@ body {
     backdrop-filter: blur(12px);
   }
 
+  /* PWA / small-screen ergonomics (standalone). */
+  @media (display-mode: standalone) {
+    .container-app {
+      padding-left: max(0.75rem, env(safe-area-inset-left));
+      padding-right: max(0.75rem, env(safe-area-inset-right));
+    }
+
+    .topbar {
+      padding-top: env(safe-area-inset-top);
+    }
+
+    .topbar-actions {
+      width: 100%;
+      justify-content: flex-start;
+    }
+
+    .topbar-actions > .btn {
+      flex: 1 1 auto;
+    }
+
+    .training-board-wrap {
+      padding-left: 0;
+      padding-right: 0;
+      padding-top: 0.25rem;
+      padding-bottom: 0.25rem;
+    }
+  }
+
   .btn-toggle[aria-pressed='true'] {
     border-color: color-mix(in srgb, var(--accent) 50%, var(--border));
     background: color-mix(in srgb, var(--accent) 16%, var(--surface-2));
