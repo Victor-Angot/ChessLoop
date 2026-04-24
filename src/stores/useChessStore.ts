@@ -129,6 +129,24 @@ function addMistakePly(session: SessionState, ply: number): number[] {
   return arr
 }
 
+function boardStateFromHistoryAtApplied(
+  board: BoardState,
+  targetApplied: number,
+): BoardState | null {
+  const idx = board.history.findIndex((s) => s.lineMovesApplied === targetApplied)
+  if (idx < 0) return null
+  const snap = board.history[idx]!
+  const chess = new Chess(snap.fen)
+  return {
+    ...board,
+    chess,
+    fen: snap.fen,
+    hintSquares: null,
+    lastOpponentMove: snap.lastOpponentMove,
+    historyIndex: idx,
+  }
+}
+
 function buildTrainingLineHistory(
   line: ChessLine,
   userColor: TrainerColor,
@@ -780,14 +798,25 @@ export const useChessStore = create<ChessStore>()((set, get) => ({
       const mistakes = collectMistakePlies(live, line)
       if (mistakes.length > 0 && !live.remediation) {
         const firstPly = mistakes[0]!
-        const atFirst = boardStateAtLinePly(line, live.userColor, firstPly)
+        const fullBoard: BoardState = {
+          ...nextBoardBase,
+          chess,
+          fen,
+          lastOpponentMove,
+          history: [...board.history, ...snaps],
+          historyIndex: board.history.length + snaps.length - 1,
+        }
+        const atFirst =
+          boardStateFromHistoryAtApplied(fullBoard, firstPly) ??
+          boardStateAtLinePly(line, live.userColor, firstPly)?.board ??
+          null
         const correctPlies = live.attempt.correctUserPlies + 1
         if (atFirst) {
           set({
-            board: atFirst.board,
+            board: atFirst,
             session: {
               ...live,
-              plyIndex: atFirst.syncPly,
+              plyIndex: firstPly,
               status: 'running',
               overlay: null,
               remediation: { queue: mistakes },

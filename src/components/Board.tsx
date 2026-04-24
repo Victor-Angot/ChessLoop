@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import clsx from 'clsx'
 import { Chess } from 'chess.js'
 import type { Square } from 'chess.js'
@@ -33,6 +33,22 @@ export function Board({
   boardWrapperClassName?: string
 }) {
   const [selected, setSelected] = useState<Square | null>(null)
+  const [isStandalone, setIsStandalone] = useState(false)
+
+  useEffect(() => {
+    const check = () => {
+      const standalone =
+        window.matchMedia?.('(display-mode: standalone)')?.matches === true ||
+        // iOS Safari legacy
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (window.navigator as any)?.standalone === true
+      setIsStandalone(standalone)
+    }
+    check()
+    const mql = window.matchMedia?.('(display-mode: standalone)')
+    mql?.addEventListener?.('change', check)
+    return () => mql?.removeEventListener?.('change', check)
+  }, [])
 
   const game = useMemo(() => new Chess(fen), [fen])
 
@@ -113,7 +129,10 @@ export function Board({
     <div
       className={clsx(
         'mx-auto',
-        boardWrapperClassName ?? 'w-full max-w-[520px] lg:max-w-[640px]',
+        boardWrapperClassName ??
+          (isStandalone
+            ? 'w-full max-w-none'
+            : 'w-full max-w-[520px] lg:max-w-[640px]'),
       )}
     >
       <ChessboardProvider
@@ -123,6 +142,19 @@ export function Board({
           boardOrientation,
           allowDragging: allowDrag,
           animationDurationInMs: 150,
+          showNotation: true,
+          darkSquareNotationStyle: isStandalone
+            ? { fontSize: '9px', opacity: 0.6 }
+            : { fontSize: '11px', opacity: 0.75 },
+          lightSquareNotationStyle: isStandalone
+            ? { fontSize: '9px', opacity: 0.6 }
+            : { fontSize: '11px', opacity: 0.75 },
+          alphaNotationStyle: isStandalone
+            ? { fontSize: '9px', opacity: 0.6 }
+            : { fontSize: '11px', opacity: 0.75 },
+          numericNotationStyle: isStandalone
+            ? { fontSize: '9px', opacity: 0.6 }
+            : { fontSize: '11px', opacity: 0.75 },
           squareStyles,
           arrows,
           onSquareClick: handleSquareClick,
