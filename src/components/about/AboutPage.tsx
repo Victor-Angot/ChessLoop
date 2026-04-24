@@ -1,12 +1,13 @@
 import { aboutSections } from '../../content/aboutSections'
+import { copy } from '../../content/texts'
 
 export function AboutPage() {
   return (
     <div className="mx-auto max-w-3xl space-y-10 py-2 sm:py-4">
       <header>
-        <h1 className="text-2xl font-bold tracking-tight">About Chess Loop</h1>
+        <h1 className="text-2xl font-bold tracking-tight">{copy.aboutPage.title}</h1>
         <p className="muted mt-2 text-sm leading-relaxed">
-          How spaced repetition works in this app, written to stay easy to extend.
+          {copy.aboutPage.intro}
         </p>
       </header>
 

@@ -6,6 +6,7 @@ import { RouteFallback } from '../components/RouteFallback'
 const App = lazy(() => import('../App'))
 const AdminAnalyticsPage = lazy(() => import('../pages/AdminAnalyticsPage'))
 const AccountPage = lazy(() => import('../pages/AccountPage'))
+const AboutPage = lazy(() => import('../pages/AboutPage'))
 const ForgotPasswordPage = lazy(() => import('../pages/ForgotPasswordPage'))
 const LoginPage = lazy(() => import('../pages/LoginPage'))
 const ResetPasswordPage = lazy(() => import('../pages/ResetPasswordPage'))
@@ -17,6 +18,7 @@ export function AppRoutes() {
       <Routes>
         <Route path="/login" element={<LoginPage />} />
         <Route path="/signup" element={<SignupPage />} />
+        <Route path="/about" element={<AboutPage />} />
         <Route path="/forgot-password" element={<ForgotPasswordPage />} />
         <Route path="/reset-password" element={<ResetPasswordPage />} />
         <Route
