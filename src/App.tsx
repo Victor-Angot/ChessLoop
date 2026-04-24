@@ -6,6 +6,7 @@ import { Modal } from './components/ui/Modal'
 import { useTrainingShortcuts } from './hooks/useTrainingShortcuts'
 import { useChessStore } from './stores/useChessStore'
 import { copy } from './content/texts'
+import { TrainingStatusMessage } from './components/review/TrainingStatusMessage'
 
 const ReviewSession = lazy(() =>
   import('./components/ReviewSession').then((m) => ({
@@ -152,6 +153,7 @@ export default function App() {
               <Suspense fallback={<TrainerSectionFallback />}>
                 <StatsPanel />
               </Suspense>
+              <TrainingStatusMessage />
               <PgnCommentsPanel />
             </div>
           ) : null}

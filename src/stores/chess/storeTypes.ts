@@ -35,7 +35,7 @@ export interface SessionState {
   /** User plies where the answer was wrong (deduped when building remediation). */
   mistakeUserPlies: number[]
   /** After a full line with mistakes: replay only these user plies in order; null when inactive. */
-  remediation: null | { queue: number[] }
+  remediation: null | { queue: number[]; history: BoardSnapshot[] }
   attempt: {
     usedHint: boolean
     madeMistake: boolean
@@ -86,6 +86,11 @@ export interface StoreState {
     showLinesPanel: boolean
     showImportPanel: boolean
     mainSection: MainSection
+    /**
+     * Recent "Random session" starting line ids (most recent first).
+     * Used to avoid always starting on the same variation.
+     */
+    randomRecentStarts?: string[]
   }
   filters: {
     repertoireId: string | null

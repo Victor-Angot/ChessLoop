@@ -25,7 +25,6 @@ import {
   type MainSection,
   type SessionState,
   type StoreState,
-  computeQualityMistake,
   computeQualitySuccess,
   isUsersTurn,
 } from './chess/storeTypes'
@@ -133,17 +132,61 @@ function boardStateFromHistoryAtApplied(
   board: BoardState,
   targetApplied: number,
 ): BoardState | null {
-  const idx = board.history.findIndex((s) => s.lineMovesApplied === targetApplied)
+  const idxExact = board.history.findIndex((s) => s.lineMovesApplied === targetApplied)
+  const idx =
+    idxExact >= 0
+      ? idxExact
+      : // Fallback: pick the latest snapshot not past the target.
+        board.history.reduce((best, s, i) => {
+          const applied = s.lineMovesApplied
+          if (applied == null) return best
+          if (applied <= targetApplied && i > best) return i
+          return best
+        }, -1)
   if (idx < 0) return null
   const snap = board.history[idx]!
   const chess = new Chess(snap.fen)
+  // Remediation should be playable (not "read-only history"). Make this snapshot the live end.
+  const history = board.history.slice(0, idx + 1)
   return {
     ...board,
     chess,
     fen: snap.fen,
     hintSquares: null,
     lastOpponentMove: snap.lastOpponentMove,
-    historyIndex: idx,
+    history,
+    historyIndex: history.length - 1,
+  }
+}
+
+function boardStateFromSnapshotsAtApplied(
+  boardBase: BoardState,
+  snapshots: BoardSnapshot[],
+  targetApplied: number,
+): BoardState | null {
+  const idxExact = snapshots.findIndex((s) => s.lineMovesApplied === targetApplied)
+  const idx =
+    idxExact >= 0
+      ? idxExact
+      : snapshots.reduce((best, s, i) => {
+          const applied = s.lineMovesApplied
+          if (applied == null) return best
+          if (applied <= targetApplied && i > best) return i
+          return best
+        }, -1)
+  if (idx < 0) return null
+  const snap = snapshots[idx]!
+  const chess = new Chess(snap.fen)
+  // Make this snapshot the live end for training input.
+  const history = snapshots.slice(0, idx + 1)
+  return {
+    ...boardBase,
+    chess,
+    fen: snap.fen,
+    hintSquares: null,
+    lastOpponentMove: snap.lastOpponentMove,
+    history,
+    historyIndex: history.length - 1,
   }
 }
 
@@ -278,6 +321,28 @@ function filterLine(
   return true
 }
 
+function randInt(maxExclusive: number): number {
+  if (maxExclusive <= 1) return 0
+  try {
+    const c = globalThis.crypto
+    if (c?.getRandomValues) {
+      const x = new Uint32Array(1)
+      c.getRandomValues(x)
+      return x[0]! % maxExclusive
+    }
+  } catch {
+    // ignore
+  }
+  return Math.floor(Math.random() * maxExclusive)
+}
+
+function shuffleInPlace<T>(arr: T[]): void {
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = randInt(i + 1)
+    ;[arr[i], arr[j]] = [arr[j]!, arr[i]!]
+  }
+}
+
 async function persistLine(line: ChessLine): Promise<void> {
   await bulkUpsertLines([line])
 }
@@ -291,6 +356,7 @@ export const useChessStore = create<ChessStore>()((set, get) => ({
     showLinesPanel: false,
     showImportPanel: false,
     mainSection: 'trainer',
+    randomRecentStarts: [],
   },
   filters: { repertoireId: null, title: null, color: null },
   session: initialSession(),
@@ -451,28 +517,48 @@ export const useChessStore = create<ChessStore>()((set, get) => ({
     const allScoped = all
       .filter((l) => !l.excluded)
       .filter((l) => filterLine(l, filters, titleOv))
-    const pool =
-      dueScoped.length > 0 ? dueScoped : allScoped
-    const ids = pool.map((l) => l.id)
-    const rnd = new Uint32Array(ids.length)
-    crypto.getRandomValues(rnd)
-    for (let i = ids.length - 1; i > 0; i--) {
-      const j = rnd[i]! % (i + 1)
-      ;[ids[i], ids[j]] = [ids[j]!, ids[i]!]
+    // Random practice should feel random: pick from ALL eligible lines, not only "due".
+    // We'll still prefer due lines slightly, but never restrict to them.
+    const allIds = allScoped.map((l) => l.id)
+    const dueIds = new Set(dueScoped.map((l) => l.id))
+
+    // Anti-repetition: avoid recently-started lines when possible.
+    const recent = get().ui.randomRecentStarts ?? []
+    const recentSet = new Set(recent)
+    const eligible = allIds.filter((id) => !recentSet.has(id))
+    const base = eligible.length > 0 ? eligible : allIds
+
+    // Soft preference for due: duplicate due ids once in the draw bag.
+    const bag =
+      dueIds.size > 0
+        ? [...base, ...base.filter((id) => dueIds.has(id))]
+        : base
+
+    const startId = bag.length ? bag[randInt(bag.length)]! : null
+    const rest = startId ? allIds.filter((id) => id !== startId) : allIds
+    shuffleInPlace(rest)
+    const queue = startId ? [startId, ...rest] : rest
+
+    // Update recency list (keep last N).
+    if (startId) {
+      const MAX_RECENT = 12
+      const nextRecent = [startId, ...recent.filter((x) => x !== startId)].slice(0, MAX_RECENT)
+      set((s) => ({ ui: { ...s.ui, randomRecentStarts: nextRecent } }))
     }
+
     const session: SessionState = {
       ...initialSession(),
-      queue: ids,
-      total: ids.length,
+      queue,
+      total: queue.length,
       done: 0,
-      status: ids.length ? 'running' : 'idle',
+      status: queue.length ? 'running' : 'idle',
       userColor: 'white',
     }
     const board = emptyBoard()
-    if (ids.length > 0) {
-      session.currentLineId = ids[0]!
+    if (queue.length > 0) {
+      session.currentLineId = queue[0]!
       session.userColor =
-        get().lines.find((l) => l.id === ids[0])?.metadata.color ?? 'white'
+        get().lines.find((l) => l.id === queue[0])?.metadata.color ?? 'white'
       set({ session, board })
       await get().resetAttempt()
       return
@@ -628,7 +714,7 @@ export const useChessStore = create<ChessStore>()((set, get) => ({
   },
 
   submitMove: (from, to, promotion) => {
-    const { session, board, lines, reviewMode } = get()
+    const { session, board, lines } = get()
     if (board.historyIndex !== board.history.length - 1) return
     if (session.status !== 'running') return
     const line = lines.find((l) => l.id === session.currentLineId)
@@ -647,31 +733,12 @@ export const useChessStore = create<ChessStore>()((set, get) => ({
 
     if (!played || played.san !== expected) {
       const mistakeUserPlies = addMistakePly(session, session.plyIndex)
-      const quality = computeQualityMistake(session.attempt.correctUserPlies)
-      if (reviewMode === 'hard_fail') {
-        line.stats.attempts += 1
-        line.stats.lastScore = quality
-        if (quality >= 3) line.stats.successes += 1
-        reviewLine(line, quality)
-        void persistLine(line)
-        set((s) => ({
-          lines: s.lines.map((x) => (x.id === line.id ? { ...line } : x)),
-          board: nextBoardBase,
-          session: {
-            ...session,
-            status: 'answered',
-            overlay: { type: 'incorrect', expectedSAN: expected },
-            attempt: { ...session.attempt, madeMistake: true },
-            mistakeUserPlies,
-          },
-        }))
-        return
-      }
       set({
         board: nextBoardBase,
         session: {
           ...session,
-          status: 'answered',
+          // Keep the session running: user must retry until correct.
+          status: 'running',
           overlay: { type: 'incorrect', expectedSAN: expected },
           attempt: { ...session.attempt, madeMistake: true },
           mistakeUserPlies,
@@ -747,19 +814,25 @@ export const useChessStore = create<ChessStore>()((set, get) => ({
       }
       let nextPly = nextQueue[0]!
       let restQ = nextQueue
-      let atNext = boardStateAtLinePly(line, session.userColor, nextPly)
+      let atNext =
+        boardStateFromSnapshotsAtApplied(nextBoardBase, rem.history, nextPly) ??
+        boardStateAtLinePly(line, session.userColor, nextPly)?.board ??
+        null
       while (!atNext && restQ.length > 1) {
         restQ = restQ.slice(1)
         nextPly = restQ[0]!
-        atNext = boardStateAtLinePly(line, session.userColor, nextPly)
+        atNext =
+          boardStateFromSnapshotsAtApplied(nextBoardBase, rem.history, nextPly) ??
+          boardStateAtLinePly(line, session.userColor, nextPly)?.board ??
+          null
       }
       if (!atNext) return
       set({
-        board: atNext.board,
+        board: atNext,
         session: {
           ...session,
-          plyIndex: atNext.syncPly,
-          remediation: { queue: restQ },
+          plyIndex: nextPly,
+          remediation: { queue: restQ, history: rem.history },
           status: 'running',
           overlay: null,
           attempt: {
@@ -819,7 +892,7 @@ export const useChessStore = create<ChessStore>()((set, get) => ({
               plyIndex: firstPly,
               status: 'running',
               overlay: null,
-              remediation: { queue: mistakes },
+              remediation: { queue: mistakes, history: fullBoard.history },
               mistakeUserPlies: [],
               attempt: {
                 ...live.attempt,
@@ -878,6 +951,7 @@ export const useChessStore = create<ChessStore>()((set, get) => ({
       session: {
         ...session,
         plyIndex,
+        overlay: null,
         attempt: {
           ...session.attempt,
           correctUserPlies: session.attempt.correctUserPlies + 1,

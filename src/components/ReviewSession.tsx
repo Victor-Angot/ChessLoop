@@ -335,7 +335,7 @@ export function ReviewSession() {
           incorrectExpected={incorrectFromTo}
         />
       </div>
-      <TrainingFooterPanel incorrectFromTo={incorrectFromTo} />
+      <TrainingFooterPanel />
     </section>
   )
 }
